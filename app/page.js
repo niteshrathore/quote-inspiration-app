@@ -140,113 +140,172 @@ function PaletteIcon() {
   );
 }
 
-// ─── Share / Instagram Story Generator ────────────────────────────────────────
+// ─── Share / Instagram Story Generator (Redesigned) ──────────────────────────
 function SharePanel({ quote, language, onClose, theme }) {
   const canvasRef = useRef(null);
   const [selectedLayout, setSelectedLayout] = useState("classic");
-  const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [copyMsg, setCopyMsg] = useState(null);
   const isDark = theme.mode === "dark";
 
-  const generateStoryImage = useCallback((layout) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const ctx = canvas.getContext("2d");
-    canvas.width = 1080;
-    canvas.height = 1920;
-
-    const config = LANGUAGE_CONFIG[language];
-    const catColor = CATEGORY_COLORS[quote.category] || "#8b5cf6";
-    const fontBase = language === "english" ? "Playfair Display, Georgia, serif" : "Noto Sans Devanagari, sans-serif";
-    const text = quote.text;
-    const author = quote.author;
-
-    // Background
-    if (layout === "classic" || layout === "gradient") {
-      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-      if (layout === "classic") {
-        grad.addColorStop(0, "#0f2027"); grad.addColorStop(0.5, "#203a43"); grad.addColorStop(1, "#2c5364");
-      } else {
-        grad.addColorStop(0, "#1a1a2e"); grad.addColorStop(0.3, catColor + "cc"); grad.addColorStop(1, "#0f0f1a");
-      }
-      ctx.fillStyle = grad; ctx.fillRect(0, 0, 1080, 1920);
-    } else if (layout === "bold") {
-      ctx.fillStyle = catColor; ctx.fillRect(0, 0, 1080, 1920);
-      ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(0, 0, 1080, 1920);
-    } else if (layout === "minimal") {
-      ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, 1080, 1920);
-    } else if (layout === "dark") {
-      ctx.fillStyle = "#0a0a0a"; ctx.fillRect(0, 0, 1080, 1920);
-    } else if (layout === "paper") {
-      ctx.fillStyle = "#f5f0e8"; ctx.fillRect(0, 0, 1080, 1920);
-      ctx.strokeStyle = "rgba(0,0,0,0.05)";
-      for (let i = 0; i < 1920; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(1080, i); ctx.stroke(); }
-    }
-
-    const isLightBg = layout === "minimal" || layout === "paper";
-    const textColor = isLightBg ? "#1a1a1a" : "#ffffff";
-    const subColor = isLightBg ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.6)";
-
-    // Quote mark
-    ctx.font = `200px Georgia`; ctx.fillStyle = isLightBg ? catColor + "33" : "rgba(255,255,255,0.08)";
-    ctx.fillText("❝", 60, layout === "bold" ? 650 : 700);
-
-    // Word wrap text
-    ctx.font = `${layout === "bold" ? "bold " : ""}${language === "english" ? 52 : 48}px ${fontBase}`;
-    ctx.fillStyle = textColor;
-    const maxW = 920;
+  // Helper: word wrap on canvas
+  const wrapText = (ctx, text, maxW) => {
     const words = text.split(" ");
-    let lines = []; let line = "";
+    const lines = []; let line = "";
     for (const word of words) {
       const test = line + (line ? " " : "") + word;
       if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = word; }
       else line = test;
     }
     if (line) lines.push(line);
+    return lines;
+  };
 
-    const lineH = language === "english" ? 72 : 68;
-    const startY = Math.max(750, 960 - (lines.length * lineH) / 2);
-    lines.forEach((l, i) => ctx.fillText(l, 80, startY + i * lineH));
+  const generateStoryImage = useCallback((layout) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const ctx = canvas.getContext("2d");
+    const W = 1080, H = 1920;
+    canvas.width = W; canvas.height = H;
 
-    // Translation for Sanskrit
-    if (quote.translation) {
-      ctx.font = `italic 36px Noto Sans Devanagari, sans-serif`;
-      ctx.fillStyle = subColor;
-      const tWords = quote.translation.split(" ");
-      let tLines = []; let tLine = "";
-      for (const w of tWords) {
-        const t = tLine + (tLine ? " " : "") + w;
-        if (ctx.measureText(t).width > maxW && tLine) { tLines.push(tLine); tLine = w; }
-        else tLine = t;
-      }
-      if (tLine) tLines.push(tLine);
-      const tStartY = startY + lines.length * lineH + 40;
-      tLines.forEach((l, i) => ctx.fillText(l, 80, tStartY + i * 52));
+    const config = LANGUAGE_CONFIG[language];
+    const catColor = CATEGORY_COLORS[quote.category] || "#8b5cf6";
+    const fontSerif = language === "english" ? "Georgia, serif" : "sans-serif";
+    const fontSans = "sans-serif";
+    const isLight = layout === "minimal" || layout === "paper";
+    const textCol = isLight ? "#1a1a1a" : "#ffffff";
+    const subCol = isLight ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.55)";
+    const accentCol = catColor;
+    const MARGIN = 100;
+    const textMaxW = W - MARGIN * 2;
+
+    // ── Background ──
+    if (layout === "classic") {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, "#0c1a2a"); g.addColorStop(0.4, "#162a3e"); g.addColorStop(1, "#1a3a4a");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // Subtle radial glow
+      const rg = ctx.createRadialGradient(W / 2, H * 0.45, 50, W / 2, H * 0.45, 600);
+      rg.addColorStop(0, accentCol + "18"); rg.addColorStop(1, "transparent");
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    } else if (layout === "gradient") {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, "#0f0f1f"); g.addColorStop(0.35, accentCol + "bb"); g.addColorStop(0.65, accentCol + "88"); g.addColorStop(1, "#0f0f1f");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // Noise overlay
+      ctx.fillStyle = "rgba(0,0,0,0.15)"; ctx.fillRect(0, 0, W, H);
+    } else if (layout === "bold") {
+      ctx.fillStyle = accentCol; ctx.fillRect(0, 0, W, H);
+      // Dark overlay at top and bottom
+      const topG = ctx.createLinearGradient(0, 0, 0, H * 0.3);
+      topG.addColorStop(0, "rgba(0,0,0,0.4)"); topG.addColorStop(1, "transparent");
+      ctx.fillStyle = topG; ctx.fillRect(0, 0, W, H * 0.3);
+      const botG = ctx.createLinearGradient(0, H * 0.7, 0, H);
+      botG.addColorStop(0, "transparent"); botG.addColorStop(1, "rgba(0,0,0,0.5)");
+      ctx.fillStyle = botG; ctx.fillRect(0, H * 0.7, W, H * 0.3);
+    } else if (layout === "minimal") {
+      ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, W, H);
+    } else if (layout === "dark") {
+      ctx.fillStyle = "#080808"; ctx.fillRect(0, 0, W, H);
+      // Subtle corner glow
+      const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, 500);
+      cg.addColorStop(0, accentCol + "12"); cg.addColorStop(1, "transparent");
+      ctx.fillStyle = cg; ctx.fillRect(0, 0, W, H);
+    } else if (layout === "paper") {
+      ctx.fillStyle = "#f3ece0"; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(0,0,0,0.04)"; ctx.lineWidth = 1;
+      for (let y = 0; y < H; y += 44) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      // Left red margin line
+      ctx.strokeStyle = "rgba(200,60,60,0.15)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(80, 0); ctx.lineTo(80, H); ctx.stroke();
     }
 
-    // Author
-    ctx.font = `28px ${fontBase}`; ctx.fillStyle = subColor;
-    ctx.fillText("— " + author, 80, startY + lines.length * lineH + (quote.translation ? 180 : 60));
+    // ── Decorative elements ──
+    // Top accent line
+    ctx.fillStyle = accentCol;
+    ctx.fillRect(MARGIN, 280, 60, 5);
 
-    // Category pill
-    const pillY = startY + lines.length * lineH + (quote.translation ? 240 : 120);
-    ctx.fillStyle = catColor + "44";
-    const catText = `${config.icon} ${quote.category}`;
-    ctx.font = `bold 24px sans-serif`;
-    const catW = ctx.measureText(catText).width + 40;
-    roundRect(ctx, 80, pillY, catW, 44, 22); ctx.fill();
-    ctx.fillStyle = isLightBg ? catColor : "#fff"; ctx.fillText(catText, 100, pillY + 30);
+    // ── Language label at top ──
+    ctx.font = `600 28px ${fontSans}`;
+    ctx.fillStyle = isLight ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.3)";
+    ctx.fillText(config.label, MARGIN, 340);
 
-    // Watermark
-    ctx.font = "22px sans-serif"; ctx.fillStyle = subColor;
-    ctx.fillText("✦ Inspiration App", 80, 1860);
+    // ── Big quote mark ──
+    ctx.font = `300px ${fontSerif}`;
+    ctx.fillStyle = isLight ? accentCol + "15" : accentCol + "12";
+    ctx.fillText("\u201C", MARGIN - 20, 560);
+
+    // ── Quote text (BIG, centered vertically) ──
+    const quoteFontSize = quote.text.length > 150 ? 54 : quote.text.length > 80 ? 62 : 72;
+    const bold = layout === "bold" ? "bold " : "";
+    ctx.font = `${bold}${quoteFontSize}px ${fontSerif}`;
+    ctx.fillStyle = textCol;
+    const quoteLines = wrapText(ctx, quote.text, textMaxW);
+    const lineH = quoteFontSize * 1.45;
+    const totalQuoteH = quoteLines.length * lineH;
+
+    // Calculate vertical center
+    let contentStartY = Math.max(580, (H * 0.48) - totalQuoteH / 2);
+    if (quote.translation) contentStartY = Math.max(520, contentStartY - 80);
+
+    quoteLines.forEach((l, i) => {
+      ctx.fillText(l, MARGIN, contentStartY + i * lineH);
+    });
+
+    let cursor = contentStartY + quoteLines.length * lineH;
+
+    // ── Translation (for Sanskrit) ──
+    if (quote.translation) {
+      cursor += 40;
+      // Divider line
+      ctx.fillStyle = accentCol + "44";
+      ctx.fillRect(MARGIN, cursor, 80, 3);
+      cursor += 30;
+
+      ctx.font = `italic 40px ${fontSans}`;
+      ctx.fillStyle = subCol;
+      const transLines = wrapText(ctx, quote.translation, textMaxW);
+      transLines.forEach((l, i) => {
+        ctx.fillText(l, MARGIN, cursor + i * 56);
+      });
+      cursor += transLines.length * 56;
+    }
+
+    // ── Author ──
+    cursor += 50;
+    ctx.font = `500 36px ${fontSans}`;
+    ctx.fillStyle = subCol;
+    ctx.fillText("— " + quote.author, MARGIN, cursor);
+
+    // ── Category pill ──
+    cursor += 60;
+    const catLabel = quote.category;
+    ctx.font = `bold 28px ${fontSans}`;
+    const pillW = ctx.measureText(catLabel).width + 48;
+    ctx.fillStyle = accentCol + "33";
+    roundRect(ctx, MARGIN, cursor - 8, pillW, 48, 24); ctx.fill();
+    ctx.fillStyle = isLight ? accentCol : "#fff";
+    ctx.fillText(catLabel, MARGIN + 24, cursor + 26);
+
+    // ── Bottom watermark ──
+    ctx.font = `500 26px ${fontSans}`;
+    ctx.fillStyle = isLight ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.2)";
+    ctx.fillText("✦ Inspiration", MARGIN, H - 80);
+
+    // Bottom accent line
+    ctx.fillStyle = accentCol + "66";
+    ctx.fillRect(MARGIN, H - 60, 50, 4);
 
     return canvas.toDataURL("image/png");
   }, [quote, language]);
 
   useEffect(() => {
-    const url = generateStoryImage(selectedLayout);
-    setPreviewUrl(url);
+    // Small delay to ensure fonts loaded
+    const timer = setTimeout(() => {
+      const url = generateStoryImage(selectedLayout);
+      setPreviewUrl(url);
+    }, 100);
+    return () => clearTimeout(timer);
   }, [selectedLayout, generateStoryImage]);
 
   const downloadImage = () => {
@@ -255,6 +314,19 @@ function SharePanel({ quote, language, onClose, theme }) {
     a.href = previewUrl;
     a.download = `inspiration-${language}-${Date.now()}.png`;
     a.click();
+  };
+
+  const copyImage = async () => {
+    if (!previewUrl) return;
+    try {
+      const blob = await (await fetch(previewUrl)).blob();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      setCopyMsg("Image copied!");
+      setTimeout(() => setCopyMsg(null), 2000);
+    } catch {
+      setCopyMsg("Copy not supported — use Download");
+      setTimeout(() => setCopyMsg(null), 2000);
+    }
   };
 
   const shareNative = async () => {
@@ -266,55 +338,70 @@ function SharePanel({ quote, language, onClose, theme }) {
     } catch { downloadImage(); }
   };
 
+  const catColor = CATEGORY_COLORS[quote.category] || "#8b5cf6";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}>
-      <div className="w-full max-w-lg rounded-2xl p-5 max-h-[90vh] overflow-y-auto"
-        style={{ background: isDark ? "rgba(20,20,30,0.95)" : "#fff", border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}` }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3"
+      style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
+      onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl p-5 max-h-[92vh] overflow-y-auto"
+        style={{ background: isDark ? "rgba(18,18,28,0.97)" : "#fff", border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}` }}
+        onClick={(e) => e.stopPropagation()}>
+
         <div className="flex justify-between items-center mb-4">
           <h3 style={{ color: isDark ? "#fff" : "#1a1a1a" }} className="text-lg font-bold">Share Quote</h3>
           <button onClick={onClose} style={{ color: isDark ? "#fff" : "#1a1a1a" }} className="text-2xl bg-transparent border-none cursor-pointer p-1">✕</button>
         </div>
 
         {/* Layout selector */}
-        <p style={{ color: isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)" }} className="text-xs font-semibold uppercase tracking-wider mb-2">Choose Layout for Insta Story</p>
+        <p style={{ color: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.45)" }} className="text-[11px] font-semibold uppercase tracking-widest mb-2">Story Layout</p>
         <div className="flex gap-2 mb-4 flex-wrap">
           {Object.entries(STORY_LAYOUTS).map(([key, lay]) => (
             <button key={key} onClick={() => setSelectedLayout(key)}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
               style={{
-                background: selectedLayout === key ? (CATEGORY_COLORS[quote.category] || "#8b5cf6") : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"),
-                color: selectedLayout === key ? "#fff" : (isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.6)"),
-                border: `1px solid ${selectedLayout === key ? "transparent" : (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)")}`,
+                background: selectedLayout === key ? catColor : (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"),
+                color: selectedLayout === key ? "#fff" : (isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)"),
+                border: `1px solid ${selectedLayout === key ? catColor : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)")}`,
               }}>
               {lay.icon} {lay.name}
             </button>
           ))}
         </div>
 
-        {/* Preview */}
-        <div className="rounded-xl overflow-hidden mb-4" style={{ background: "#000", aspectRatio: "9/16", maxHeight: "420px" }}>
+        {/* Preview — taller */}
+        <div className="rounded-2xl overflow-hidden mb-4 mx-auto" style={{ background: "#0a0a0a", maxWidth: "300px", aspectRatio: "9/16" }}>
           {previewUrl && <img src={previewUrl} alt="Story preview" className="w-full h-full object-contain" />}
         </div>
 
-        {/* Action buttons */}
-        <div className="flex gap-3">
+        {/* Copy message toast */}
+        {copyMsg && (
+          <div className="text-center mb-3 text-sm font-medium" style={{ color: "#6ee7b7" }}>{copyMsg}</div>
+        )}
+
+        {/* Action buttons — 3 columns */}
+        <div className="grid grid-cols-3 gap-2.5 mb-2.5">
           <button onClick={downloadImage}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer"
-            style={{ background: CATEGORY_COLORS[quote.category] || "#8b5cf6", color: "#fff", border: "none" }}>
+            className="py-3 rounded-xl font-semibold text-sm cursor-pointer"
+            style={{ background: catColor, color: "#fff", border: "none" }}>
             ⬇️ Download
           </button>
+          <button onClick={copyImage}
+            className="py-3 rounded-xl font-semibold text-sm cursor-pointer"
+            style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: isDark ? "#fff" : "#1a1a1a", border: `1px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}` }}>
+            🖼️ Copy Image
+          </button>
           <button onClick={shareNative}
-            className="flex-1 py-3 rounded-xl font-semibold text-sm cursor-pointer"
-            style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)", color: isDark ? "#fff" : "#1a1a1a", border: `1px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}` }}>
+            className="py-3 rounded-xl font-semibold text-sm cursor-pointer"
+            style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", color: isDark ? "#fff" : "#1a1a1a", border: `1px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}` }}>
             📤 Share
           </button>
         </div>
 
         {/* Copy text */}
-        <button onClick={() => { navigator.clipboard.writeText(`"${quote.text}" — ${quote.author}`); }}
-          className="w-full mt-2 py-2.5 rounded-xl text-xs cursor-pointer"
-          style={{ background: "transparent", color: isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)", border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}` }}>
+        <button onClick={() => { navigator.clipboard.writeText(`"${quote.text}" — ${quote.author}`); setCopyMsg("Text copied!"); setTimeout(() => setCopyMsg(null), 1500); }}
+          className="w-full py-2.5 rounded-xl text-xs cursor-pointer"
+          style={{ background: "transparent", color: isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.4)", border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"}` }}>
           📋 Copy Text
         </button>
 
@@ -368,7 +455,7 @@ function ThemePicker({ currentTheme, onSelect, onClose }) {
   );
 }
 
-// ─── History Panel (Improved with tabs) ───────────────────────────────────────
+// ─── History Panel (Improved — larger text, readable) ─────────────────────────
 function HistoryPanel({ history, onClose, theme }) {
   const [tab, setTab] = useState("all");
   const isDark = theme.mode === "dark";
@@ -393,19 +480,19 @@ function HistoryPanel({ history, onClose, theme }) {
   ];
 
   return (
-    <div className="fixed top-0 right-0 bottom-0 w-[400px] max-w-full z-50 slide-in overflow-y-auto safe-top safe-bottom"
+    <div className="fixed top-0 right-0 bottom-0 w-[440px] max-w-full z-50 slide-in overflow-y-auto safe-top safe-bottom"
       style={{ background: isDark ? "rgba(10,10,20,0.97)" : "rgba(255,255,255,0.97)", backdropFilter: "blur(24px)", boxShadow: "-4px 0 40px rgba(0,0,0,0.4)" }}>
-      <div className="p-5">
-        <div className="flex justify-between items-center mb-4">
-          <h3 style={{ color: isDark ? "#fff" : "#1a1a1a" }} className="text-lg font-bold">Quote History</h3>
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-5">
+          <h3 style={{ color: isDark ? "#fff" : "#1a1a1a" }} className="text-xl font-bold">Quote History</h3>
           <button onClick={onClose} style={{ color: isDark ? "#fff" : "#1a1a1a" }} className="text-2xl bg-transparent border-none cursor-pointer p-2">✕</button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1.5 mb-4 p-1 rounded-xl" style={{ background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }}>
+        <div className="flex gap-1.5 mb-5 p-1.5 rounded-xl" style={{ background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }}>
           {tabs.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className="flex-1 py-2 rounded-lg text-[11px] font-semibold cursor-pointer transition-all"
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition-all"
               style={{
                 background: tab === t.key ? (isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)") : "transparent",
                 color: tab === t.key ? (isDark ? "#fff" : "#1a1a1a") : (isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.4)"),
@@ -418,27 +505,28 @@ function HistoryPanel({ history, onClose, theme }) {
 
         {/* Quote list */}
         {filtered.length === 0 && (
-          <p style={{ color: isDark ? "#6b7280" : "#9ca3af" }} className="text-center text-sm mt-8">
+          <p style={{ color: isDark ? "#6b7280" : "#9ca3af" }} className="text-center text-base mt-8">
             No quotes in this category yet.
           </p>
         )}
         {[...filtered].reverse().map((item, i) => (
-          <div key={i} className="rounded-xl p-3.5 mb-2"
+          <div key={i} className="rounded-2xl p-5 mb-3"
             style={{
-              background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-              border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}`,
-              borderLeft: `3px solid ${item.reaction === "liked" ? "#ef4444" : item.reaction === "disliked" ? "#6b7280" : "#374151"}`,
+              background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+              border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
+              borderLeft: `4px solid ${item.reaction === "liked" ? "#ef4444" : item.reaction === "disliked" ? "#6b7280" : "#374151"}`,
             }}>
-            <p style={{ color: isDark ? "#e5e7eb" : "#374151" }} className="text-[13px] mb-1.5 leading-relaxed">
-              &ldquo;{item.quote.text.length > 140 ? item.quote.text.substring(0, 140) + "..." : item.quote.text}&rdquo;
+            <p style={{ color: isDark ? "#f3f4f6" : "#1f2937", fontFamily: "'Noto Sans Devanagari', 'Playfair Display', Georgia, serif" }}
+              className="text-base leading-relaxed mb-3">
+              &ldquo;{item.quote.text.length > 200 ? item.quote.text.substring(0, 200) + "..." : item.quote.text}&rdquo;
             </p>
             <div className="flex justify-between items-center">
-              <span className="text-[11px]" style={{ color: isDark ? "#6b7280" : "#9ca3af" }}>
+              <span className="text-sm font-medium" style={{ color: isDark ? "#9ca3af" : "#6b7280" }}>
                 {LANGUAGE_CONFIG[item.language].icon} {item.quote.author}
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full"
+              <span className="text-xs px-3 py-1 rounded-full font-medium"
                 style={{
-                  background: item.reaction === "liked" ? "rgba(239,68,68,0.12)" : item.reaction === "disliked" ? "rgba(107,114,128,0.12)" : "rgba(75,85,99,0.1)",
+                  background: item.reaction === "liked" ? "rgba(239,68,68,0.15)" : item.reaction === "disliked" ? "rgba(107,114,128,0.15)" : "rgba(75,85,99,0.12)",
                   color: item.reaction === "liked" ? "#fca5a5" : isDark ? "#9ca3af" : "#6b7280",
                 }}>
                 {item.reaction === "liked" ? "❤️" : item.reaction === "disliked" ? "👎" : "—"} {item.quote.category}
@@ -668,18 +756,18 @@ export default function QuoteApp() {
         <p style={{ color: theme.subtext }} className="text-sm text-right">— {currentQuote.author}</p>
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons — order: Share, Dislike, Rotate, Like, Copy */}
       <div className="flex items-center gap-4 sm:gap-5 mt-7">
+        <button onClick={() => setShowShare(true)}
+          className="w-[46px] h-[46px] sm:w-12 sm:h-12 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90"
+          style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)", border: `2px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`, color: isDark ? "#fff" : "#1a1a1a" }}>
+          <ShareIcon />
+        </button>
+
         <button onClick={handleDislike}
           className="w-[50px] h-[50px] sm:w-14 sm:h-14 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 active:scale-90"
           style={{ background: reaction === "disliked" ? "rgba(107,114,128,0.3)" : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"), border: `2px solid ${reaction === "disliked" ? "#6b7280" : (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)")}`, color: isDark ? "#fff" : "#1a1a1a" }}>
           <ThumbsDownIcon filled={reaction === "disliked"} />
-        </button>
-
-        <button onClick={() => setShowShare(true)}
-          className="w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer transition-all"
-          style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)", border: `1px solid ${isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)"}`, color: isDark ? "#fff" : "#1a1a1a" }}>
-          <ShareIcon />
         </button>
 
         <button onClick={getNextQuote}
@@ -688,16 +776,16 @@ export default function QuoteApp() {
           <RotateIcon />
         </button>
 
-        <button onClick={() => { navigator.clipboard.writeText(`"${currentQuote.text}" — ${currentQuote.author}`); setNotionMsg("Copied! 📋"); setTimeout(() => setNotionMsg(null), 1500); }}
-          className="w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer transition-all text-sm"
-          style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)", border: `1px solid ${isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)"}`, color: isDark ? "#fff" : "#1a1a1a" }}>
-          📋
-        </button>
-
         <button onClick={handleLike}
           className="w-[50px] h-[50px] sm:w-14 sm:h-14 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 active:scale-90"
           style={{ background: reaction === "liked" ? "rgba(239,68,68,0.2)" : (isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"), border: `2px solid ${reaction === "liked" ? "#ef4444" : (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)")}`, color: isDark ? "#fff" : "#1a1a1a" }}>
           <HeartIcon filled={reaction === "liked"} />
+        </button>
+
+        <button onClick={() => { navigator.clipboard.writeText(`"${currentQuote.text}" — ${currentQuote.author}`); setNotionMsg("Copied! 📋"); setTimeout(() => setNotionMsg(null), 1500); }}
+          className="w-[46px] h-[46px] sm:w-12 sm:h-12 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90 text-base"
+          style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)", border: `2px solid ${isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`, color: isDark ? "#fff" : "#1a1a1a" }}>
+          📋
         </button>
       </div>
 
